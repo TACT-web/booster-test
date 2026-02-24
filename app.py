@@ -4,9 +4,9 @@ from PIL import Image
 import io, json, time, re, datetime, os
 
 # --- 基本設定 ---
-st.set_page_config(page_title="教科書ブースター V1.3 完全版", layout="centered", page_icon="🚀")
+st.set_page_config(page_title="教科書ブースター V1.3 完全確定版", layout="centered", page_icon="🚀")
 
-# --- セッション初期化 (全てのフラグと設定を保持) ---
+# --- セッション初期化 (全てのフラグ・状態を保持) ---
 if "agreed" not in st.session_state: st.session_state.agreed = False
 if "setup_completed" not in st.session_state: st.session_state.setup_completed = False
 if "history" not in st.session_state: st.session_state.history = {}
@@ -46,7 +46,7 @@ def speak_js(text, speed=1.0, lang="ja-JP"):
     else:
         st.components.v1.html("<script>window.parent.speechSynthesis.cancel();</script>", height=0)
 
-# --- プロンプト (一言一句変更なし) ---
+# --- 教科別プロンプト (仕様を完全維持) ---
 SUBJECT_PROMPTS = {
     "英語": "英文を意味の塊（/）で区切るスラッシュリーディング形式（英文 / 訳）を徹底してください。重要な文法構造や熟語についても触れてください。",
     "数学": "公式の根拠を重視し、計算過程を一行ずつ省略せず論理的に解説してください。単なる手順ではなく『なぜこの解法を選ぶのか』という思考の起点を言語化してください。",
@@ -56,12 +56,22 @@ SUBJECT_PROMPTS = {
     "その他": "画像内容を客観的に観察し、中立的かつ平易な言葉で要点を3つのポイントに整理して解説してください。"
 }
 
-# --- 1. 同意画面 ---
+# --- 1. 同意画面 (元の文章を完全に復元) ---
 if not st.session_state.agreed:
     st.title("🚀 教科書ブースター V1.3")
     with st.container(border=True):
-        st.markdown("### 【本ソフトウェア利用に関する同意事項】\n**第1条（著作権の遵守）**\n利用者は、著作物を許可なく第三者に公開してはならないものとします。\n**第2条（AI生成物の正確性と免責）**\nAIによる推論に基づくものであり、正確性を保証しません。\n**第3条（利用目的）**\n私的な学習補助を目的とします。")
-        if st.checkbox("上記の内容に同意します。"):
+        st.markdown("""
+        ### 【本ソフトウェア利用に関する同意事項】
+        **第1条（著作権の遵守）**
+        利用者は、本アプリで取り扱う教科書等の著作物が著作権法により保護されていることを認識し、解析結果等を権利者の許可なく第三者に公開（SNS、ブログ等への掲載）してはならないものとします。
+        
+        **第2条（AI生成物の正確性と免責）**
+        本アプリが提供する解説および回答は、人工知能による推論に基づくものであり、その正確性、完全性、妥当性を保証するものではありません。生成された内容に起因する学習上の不利益や損害について、開発者は一切の責任を負いません。
+        
+        **第3条（利用目的）**
+        本アプリは利用者の私的な学習補助を目的として提供されるものです。試験等の最終的な確認は、必ず公式な教材および指導者の指示に従ってください。
+        """)
+        if st.checkbox("上記の内容を理解し、すべての条項に同意します。"):
             st.session_state.agreed = True
             st.rerun()
     st.stop()
@@ -74,7 +84,7 @@ if not st.session_state.setup_completed:
         c1, c2 = st.columns(2)
         st.session_state.school_type = c1.selectbox("学校区分", ["小学生", "中学生", "高校生"])
         st.session_state.grade = c1.selectbox("学年", [f"{i}年生" for i in range(1, 7)])
-        st.session_state.age_val = c2.slider("ターゲット年齢", 7, 20, 15)
+        st.session_state.age_val = c2.slider("解説ターゲット年齢", 7, 20, 15)
         st.session_state.quiz_count = c2.selectbox("問題数", [10, 15, 20, 25])
         if st.form_submit_button("🚀 学習を開始する"):
             st.session_state.history = load_history()
@@ -82,68 +92,73 @@ if not st.session_state.setup_completed:
             st.rerun()
     st.stop()
 
-# --- サイドバー ---
+# --- サイドバー (リアルタイム調整) ---
 st.sidebar.header("🛠️ クイック調整")
 st.session_state.font_size = st.sidebar.slider("🔍 文字サイズ", 14, 45, st.session_state.font_size)
 st.session_state.voice_speed = st.sidebar.slider("🐌 音声速度", 0.5, 2.0, st.session_state.voice_speed, 0.1)
 st.session_state.user_api_key = st.sidebar.text_input("API Key 更新", value=st.session_state.user_api_key, type="password")
 
-# スタイル適用
-st.markdown(f"<style>.content-body {{ font-size: {st.session_state.font_size}px !important; }}</style>", unsafe_allow_html=True)
+st.markdown(f"<style>.content-body {{ font-size: {st.session_state.font_size}px !important; line-height: 1.6; }}</style>", unsafe_allow_html=True)
 
-# --- 3. メイン画面 (タブ) ---
+# --- 3. メイン画面 (タブ管理) ---
 tab_study, tab_history, tab_config = st.tabs(["📖 学習", "📈 履歴", "⚙️ 設定変更"])
 
 with tab_config:
     with st.form("update_settings"):
         u_s_type = st.selectbox("学校区分", ["小学生", "中学生", "高校生"], index=["小学生", "中学生", "高校生"].index(st.session_state.school_type))
         u_grade = st.selectbox("学年", [f"{i}年生" for i in range(1, 7)], index=[f"{i}年生" for i in range(1, 7)].index(st.session_state.grade))
-        u_age = st.slider("年齢", 7, 20, st.session_state.age_val)
+        u_age = st.slider("解説ターゲット年齢", 7, 20, st.session_state.age_val)
         u_q = st.selectbox("問題数", [10, 15, 20, 25], index=[10, 15, 20, 25].index(st.session_state.quiz_count))
         if st.form_submit_button("✅ 設定を更新"):
             st.session_state.school_type, st.session_state.grade = u_s_type, u_grade
             st.session_state.age_val, st.session_state.quiz_count = u_age, u_q
             st.session_state.history = load_history()
-            st.toast("保存しました")
+            st.toast("設定を保存しました")
 
 with tab_history:
+    st.write(f"📂 {st.session_state.school_type} {st.session_state.grade} の履歴")
     for sub, logs in st.session_state.history.items():
         with st.expander(f"📙 {sub}"):
-            for log in logs: st.write(f"📅 {log['date']} | P.{log.get('page','?')} | {log['score']}")
+            for log in logs: st.write(f"📅 {log['date']} | 結果: {log['score']}")
 
 with tab_study:
     c_s1, c_s2 = st.columns(2)
     subject_choice = c_s1.selectbox("🎯 教科", list(SUBJECT_PROMPTS.keys()))
-    style_choice = c_s2.selectbox("🎨 スタイル", ["定型", "対話形式", "ニュース風", "自由入力"])
-    custom_style = st.text_input("カスタム口調入力", placeholder="侍風など") if style_choice == "自由入力" else ""
+    style_choice = c_s2.selectbox("🎨 解説スタイル", ["定型", "対話形式", "ニュース風", "自由入力"])
+    custom_style = st.text_input("カスタムスタイル指定", placeholder="例: 実況風") if style_choice == "自由入力" else ""
 
-    cam_file = st.file_uploader("📸 スキャン", type=['png', 'jpg', 'jpeg'])
+    cam_file = st.file_uploader("📸 教科書をスキャン", type=['png', 'jpg', 'jpeg'])
 
     if cam_file and st.button("✨ ブースト開始", use_container_width=True):
-        genai.configure(api_key=st.session_state.user_api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        with st.status("分析中..."):
-            style_inst = {"定型":"冷静な天才教育者","対話形式":"親しみやすい対話型先生","ニュース風":"結論先行のニュース速報風","自由入力":custom_style}[style_choice]
-            eng_opt = "英語なら冒頭に重要単語表を作成し、解説文はHTMLタグで主語を青色(<span style='color:blue'>)、前置詞を緑色(<span style='color:green'>)で色分けし、その凡例を最初に示せ。" if subject_choice == "英語" else ""
+        if not st.session_state.user_api_key:
+            st.error("APIキーを入力してください")
+        else:
+            genai.configure(api_key=st.session_state.user_api_key)
+            # 指定のモデル名：gemini-3.0-flash-preview
+            model = genai.GenerativeModel('gemini-3.0-flash-preview')
             
-            full_prompt = f"""あなたは{st.session_state.school_type}{st.session_state.grade}担当。
-            【教科ミッション: {subject_choice}】{SUBJECT_PROMPTS[subject_choice]}
-            【ルール】1.is_match 2.根拠[P.〇/〇行目] 3.audio_script(ひらがな) 4.english_only_script(英語のみ) 5.ランク別メッセージ 6.年齢{st.session_state.age_val}歳 
-            7.1ブロック100-200文字(AI判断) 8.問題数{st.session_state.quiz_count}
-            【スタイル】{style_inst} 【構成】導入サマリー → 詳細解説 → クイズ。{eng_opt}
-            ###JSON形式###
-            {{ "is_match": true, "detected_subject": "{subject_choice}", "page": "数字", "explanation_blocks": [{{ "text": "..", "audio_target": ".." }}], "english_only_script": "..", "audio_script": "..", "boost_comments": {{ "high": {{"text":"..","script":".."}}, "mid": {{"text":"..","script":".."}}, "low": {{"text":"..","script":".."}} }}, "quizzes": [{{ "question":"..", "options":[".."], "answer":0 }}] }}"""
-            
-            img = Image.open(cam_file)
-            res_raw = model.generate_content([full_prompt, img])
-            match = re.search(r"(\{.*\})", res_raw.text, re.DOTALL)
-            if match:
-                st.session_state.final_json = json.loads(match.group(1))
-                st.session_state.final_json["used_subject"] = subject_choice
+            with st.status("教科書を分析中..."):
+                style_inst = {"定型":"冷静な天才教育者","対話形式":"親しみやすい対話型の先生","ニュース風":"結論から伝えるニュース速報風","自由入力":custom_style}[style_choice]
+                eng_opt = "英語なら冒頭に重要単語表を作成し、解説文はHTMLタグで主語を青色(<span style='color:blue'>)、前置詞を緑色(<span style='color:green'>)で色分けし、その色の意味（青は主語、緑は前置詞句など）を示す凡例を解説の冒頭に必ず記載せよ。" if subject_choice == "英語" else ""
+                
+                full_prompt = f"""あなたは{st.session_state.school_type}{st.session_state.grade}担当。
+                【教科ミッション: {subject_choice}】{SUBJECT_PROMPTS[subject_choice]}
+                【ルール】1.is_match 2.根拠[P.〇/〇行目] 3.audio_script(ひらがな) 4.english_only_script(英語のみ) 5.ランク別メッセージ 6.年齢{st.session_state.age_val}歳 
+                7.1ブロック100-200文字(AIが内容に応じ判断) 8.問題数{st.session_state.quiz_count}
+                【スタイル】{style_inst} 【構成】導入サマリー → 詳細解説 → クイズ。{eng_opt}
+                ###JSON形式で出力せよ###
+                {{ "is_match": true, "detected_subject": "{subject_choice}", "page": "数字", "explanation_blocks": [{{ "text": "..", "audio_target": ".." }}], "english_only_script": "..", "audio_script": "..", "boost_comments": {{ "high": {{"text":"..","script":".."}}, "mid": {{"text":"..","script":".."}}, "low": {{"text":"..","script":".."}} }}, "quizzes": [{{ "question":"..", "options":[".."], "answer":0 }}] }}"""
+                
+                img = Image.open(cam_file)
+                res_raw = model.generate_content([full_prompt, img])
+                match = re.search(r"(\{.*\})", res_raw.text, re.DOTALL)
+                if match:
+                    st.session_state.final_json = json.loads(match.group(1))
+                    st.session_state.final_json["used_subject"] = subject_choice
 
     if st.session_state.final_json:
         res = st.session_state.final_json
-        # 音声ボタン4種 (確実に配置)
+        # 音声ボタン4種 (全文、英文、停止、個別)
         v_cols = st.columns([1, 1, 1, 1])
         with v_cols[0]:
             if st.button("🔊 全文再生"): speak_js(res.get("audio_script"), st.session_state.voice_speed, "ja-JP")
@@ -153,7 +168,7 @@ with tab_study:
         with v_cols[2]:
             if st.button("🛑 停止"): speak_js("")
         with v_cols[3]:
-            if st.button("🔊 ブロック再生"):
+            if st.button("🔊 個別再生"):
                 st.session_state.show_voice_btns = not st.session_state.show_voice_btns
                 st.rerun()
 
@@ -165,13 +180,12 @@ with tab_study:
                         lang = "en-US" if res.get("used_subject") == "英語" else "ja-JP"
                         speak_js(block["audio_target"], st.session_state.voice_speed, lang)
 
-        # クイズ & 保存
-        with st.expander("📝 クイズに挑戦", expanded=True):
+        with st.expander("📝 定着確認クイズ", expanded=True):
             score = 0
             for i, q in enumerate(res.get("quizzes", [])):
                 ans = st.radio(f"問{i+1}: {q['question']}", q['options'], key=f"q_{i}", index=None)
                 if ans == q['options'][q['answer']]: score += 1
-            if st.button("結果を保存"):
+            if st.button("採点 & 保存"):
                 rate = (score / len(res["quizzes"])) * 100
                 st.metric("正解率", f"{rate:.0f}%")
                 rank = "high" if rate == 100 else "mid" if rate >= 50 else "low"
