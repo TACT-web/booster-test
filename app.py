@@ -6,9 +6,8 @@ import io, json, time, re, datetime, gc, os
 # --- 基本設定 ---
 st.set_page_config(page_title="教科書ブースター V1.2", layout="centered", page_icon="🚀")
 
-# --- 🛠️ 履歴の自動永続化ロジック (UX強化版) ---
+# --- 🛠️ 履歴の自動永続化ロジック ---
 def get_all_history_files():
-    """保存されている学年別ファイルをすべて取得"""
     return [f for f in os.listdir() if f.startswith("history_") and f.endswith(".json")]
 
 def load_history_by_file(filename):
@@ -25,16 +24,16 @@ def save_history(history):
         json.dump(history, f, ensure_ascii=False, indent=2)
 
 # --- セッション初期化 ---
-if "current_tab" not in st.session_state: st.session_state.current_tab = "学習"
+if "agreed" not in st.session_state: st.session_state.agreed = False
+if "setup_completed" not in st.session_state: st.session_state.setup_completed = False
 if "history" not in st.session_state: st.session_state.history = {}
 if "final_json" not in st.session_state: st.session_state.final_json = None
-if "agreed" not in st.session_state: st.session_state.agreed = False
 if "font_size" not in st.session_state: st.session_state.font_size = 18
 if "show_voice_btns" not in st.session_state: st.session_state.show_voice_btns = False
 if "review_mode" not in st.session_state: st.session_state.review_mode = False
 if "user_api_key" not in st.session_state: st.session_state.user_api_key = ""
 
-# --- リロード時の自動復元ロジック ---
+# --- リロード時の自動復元 ---
 if not st.session_state.agreed:
     files = get_all_history_files()
     if files:
@@ -47,7 +46,7 @@ if not st.session_state.agreed:
                 st.session_state.school_type = parts[1]
                 st.session_state.grade = parts[2]
                 st.session_state.history = saved_data
-                st.session_state.current_tab = "履歴"
+                st.session_state.setup_completed = True
 
 def speak_chrome(text, speed=1.0, lang="ja-JP"):
     if text:
@@ -58,9 +57,15 @@ def speak_chrome(text, speed=1.0, lang="ja-JP"):
 def stop_speech():
     st.components.v1.html("<script>window.parent.speechSynthesis.cancel();</script>", height=0)
 
+# サイドバー共通設定
+if st.session_state.agreed and st.session_state.setup_completed:
+    st.sidebar.header("🛠️ クイック調整")
+    st.session_state.font_size = st.sidebar.slider("🔍 文字サイズ", 14, 45, st.session_state.font_size)
+    st.session_state.voice_speed = st.sidebar.slider("🐌 音声速度", 0.5, 2.0, 1.0, 0.1)
+    st.session_state.user_api_key = st.sidebar.text_input("API Key設定", value=st.session_state.user_api_key, type="password")
+
 st.markdown(f"<style>.content-body {{ font-size: {st.session_state.font_size}px !important; line-height: 1.6; }}</style>", unsafe_allow_html=True)
 
-# 教科別個別プロンプト (一言一句維持)
 SUBJECT_PROMPTS = {
     "英語": "英文を意味の塊（/）で区切るスラッシュリーディング形式（英文 / 訳）を徹底してください。重要な文法構造や熟語についても触れてください。",
     "数学": "公式の根拠を重視し、計算過程を一行ずつ省略せず論理的に解説してください。単なる手順ではなく『なぜこの解法を選ぶのか』という思考の起点を言語化してください。",
@@ -70,7 +75,7 @@ SUBJECT_PROMPTS = {
     "その他": "画像内容を客観的に観察し、中立的かつ平易な言葉で要点を3つのポイントに整理して解説してください。"
 }
 
-# 1. 同意画面 (文言完全維持)
+# 1. 同意画面
 if not st.session_state.agreed:
     st.markdown("""<div style="line-height: 1.1; margin-bottom: 20px;"><span style="font-size: 24px; font-weight: bold; white-space: nowrap;">🚀教科書ブースター</span><br><span style="font-size: 14px; color: gray;">Ver 1.2</span></div>""", unsafe_allow_html=True)
     with st.container(border=True):
@@ -84,40 +89,68 @@ if not st.session_state.agreed:
         本アプリは利用者の私的な学習補助を目的として提供されるものです。試験等の最終的な確認は、必ず公式な教材および指導者の指示に従ってください。
         """)
         if st.checkbox("上記の内容を理解し、すべての条項に同意します。"):
-            st.session_state.agreed = True; st.rerun()
+            st.session_state.agreed = True
+            st.rerun()
     st.stop()
 
-# 2. 設定画面 (APIキーなしでも履歴は見れるように)
-if "school_type" not in st.session_state:
-    with st.form("settings"):
+# 2. 初回設定画面（同意済み・未設定の場合のみ全画面表示）
+if not st.session_state.setup_completed:
+    st.markdown("### ⚙️ 初期設定")
+    with st.form("initial_settings"):
         st.info("過去の履歴を見るだけならAPIキーは空でOKです。")
-        api_key = st.text_input("Gemini API Key", type="password")
+        api_key = st.text_input("Gemini API Key", type="password", value=st.session_state.user_api_key)
         c1, c2 = st.columns(2)
         s_type = c1.selectbox("学校区分", ["小学生", "中学生", "高校生"])
         grade = c1.selectbox("学年", [f"{i}年生" for i in range(1, 7)])
         age_val = c2.slider("解説ターゲット年齢", 7, 20, 15)
         q_count = c2.selectbox("問題数", [10, 15, 20, 25])
-        if st.form_submit_button("🚀 準備完了"):
+        if st.form_submit_button("🚀 学習を開始する"):
             st.session_state.user_api_key, st.session_state.school_type, st.session_state.grade = api_key, s_type, grade
             st.session_state.age_val, st.session_state.quiz_count = age_val, q_count
             st.session_state.history = load_history_by_file(f"history_{s_type}_{grade}.json")
+            st.session_state.setup_completed = True
             st.rerun()
     st.stop()
 
-# 3. メインナビゲーション (タブの自動遷移用)
-m1, m2 = st.columns(2)
-if m1.button("📖 学習ブースト", use_container_width=True): st.session_state.current_tab = "学習"
-if m2.button("📈 ブースト履歴", use_container_width=True): st.session_state.current_tab = "履歴"
-st.divider()
+# 3. メイン画面（タブ構成）
+tab_study, tab_history, tab_config = st.tabs(["📖 学習", "📈 履歴", "⚙️ 設定変更"])
 
-if st.session_state.current_tab == "学習":
+with tab_config:
+    st.subheader("ユーザー設定の変更")
+    st.info("💡 音声速度と文字サイズは、左側のサイドバーからいつでも変更できます。")
+    with st.form("update_settings"):
+        u_c1, u_c2 = st.columns(2)
+        u_s_type = u_c1.selectbox("学校区分", ["小学生", "中学生", "高校生"], index=["小学生", "中学生", "高校生"].index(st.session_state.school_type))
+        u_grade = u_c1.selectbox("学年", [f"{i}年生" for i in range(1, 7)], index=[f"{i}年生" for i in range(1, 7)].index(st.session_state.grade))
+        u_age_val = u_c2.slider("解説ターゲット年齢", 7, 20, st.session_state.age_val)
+        u_q_count = u_c2.selectbox("問題数", [10, 15, 20, 25], index=[10, 15, 20, 25].index(st.session_state.quiz_count))
+        if st.form_submit_button("✅ 設定を更新"):
+            st.session_state.school_type, st.session_state.grade = u_s_type, u_grade
+            st.session_state.age_val, st.session_state.quiz_count = u_age_val, u_q_count
+            st.session_state.history = load_history_by_file(f"history_{u_s_type}_{u_grade}.json")
+            st.toast("設定を更新しました！学習タブで反映されます。")
+
+with tab_history:
+    st.write(f"📂 表示中の学年: {st.session_state.school_type} {st.session_state.grade}")
+    for sub, logs in st.session_state.history.items():
+        with st.expander(f"📙 {sub}"):
+            for i, log in enumerate(logs):
+                c1, c2, c3 = st.columns([2, 1, 1])
+                c1.write(f"📅 {log['date']} (P.{log.get('page','?')})")
+                c2.write(f"🏆 {log['score']}")
+                if c3.button("🔄 解き直し", key=f"rev_{sub}_{i}"):
+                    st.session_state.final_json = {"quizzes": log["quizzes"], "used_subject": sub}
+                    st.session_state.review_mode = True
+                    # 学習画面へ遷移するように促す（Streamlitのタブ選択をコードから直接制御するのは制限があるため案内を表示）
+                    st.info("学習タブに切り替えて復習を開始してください。")
+
+with tab_study:
     if st.session_state.review_mode:
         st.info("🔄 復習モード中（過去の問題を解いています）")
         if st.button("⬅ 新規学習に戻る"):
             st.session_state.review_mode, st.session_state.final_json = False, None
             st.rerun()
     else:
-        st.session_state.user_api_key = st.sidebar.text_input("API Key設定", value=st.session_state.user_api_key, type="password")
         c_sub1, c_sub2 = st.columns([3, 1])
         with c_sub1: st.markdown(f"### 📖 {st.session_state.school_type} {st.session_state.grade}")
         subject_choice = c_sub2.selectbox("🎯 教科", list(SUBJECT_PROMPTS.keys()), label_visibility="collapsed")
@@ -145,20 +178,21 @@ if st.session_state.current_tab == "学習":
 
     if st.session_state.final_json:
         res = st.session_state.final_json
+        speed = st.session_state.get("voice_speed", 1.0)
+        
         if not st.session_state.review_mode:
-            st.session_state.font_size = st.sidebar.slider("🔍 文字サイズ", 14, 45, st.session_state.font_size)
-            speed = st.sidebar.slider("🐌 音声速度", 0.5, 2.0, 1.0, 0.1)
             v_cols = st.columns(4 if res.get("used_subject") == "英語" else 3)
             with v_cols[0]:
-                if st.button("🔊 全文"): speak_chrome(res.get("audio_script"), speed)
+                if st.button("🔊 全文音声"): speak_chrome(res.get("audio_script"), speed)
             if res.get("used_subject") == "英語":
                 with v_cols[1]:
-                    if st.button("🔊 英文"): speak_chrome(res.get("english_only_script", ""), speed, "en-US")
+                    if st.button("🔊 英文のみ音声"): speak_chrome(res.get("english_only_script", ""), speed, "en-US")
             with v_cols[-2]:
                 if st.button("🛑 停止"): stop_speech()
             with v_cols[-1]:
-                if st.button("🔊 個別"):
-                    st.session_state.show_voice_btns = not st.session_state.show_voice_btns; st.rerun()
+                if st.button("🔊 ブロック別音声"):
+                    st.session_state.show_voice_btns = not st.session_state.show_voice_btns
+                    st.rerun()
 
             for i, block in enumerate(res.get("explanation_blocks", [])):
                 with st.container(border=True):
@@ -176,7 +210,9 @@ if st.session_state.current_tab == "学習":
             ans = st.radio(f"問{i+1}: {q['question']} ({q.get('location','')})", q['options'], key=f"q_{i}_{st.session_state.review_mode}", index=None)
             if ans:
                 answered += 1
-                if ans == q['options'][q['answer']]: st.success("⭕ 正解！"); score += 1
+                if ans == q['options'][q['answer']]:
+                    st.success("⭕ 正解！")
+                    score += 1
                 else: st.error(f"❌ 正解: {q['options'][q['answer']]}")
 
         if answered == len(res.get("quizzes", [])) and len(res.get("quizzes", [])) > 0:
@@ -190,18 +226,5 @@ if st.session_state.current_tab == "学習":
                     subj = res["used_subject"]
                     if subj not in st.session_state.history: st.session_state.history[subj] = []
                     st.session_state.history[subj].append({"date": datetime.datetime.now().strftime("%m/%d %H:%M"), "page": user_page, "score": f"{rate:.0f}%", "quizzes": res["quizzes"]})
-                    save_history(st.session_state.history); st.toast("履歴に保存しました！")
-
-else: # 履歴画面
-    st.write(f"📂 表示中の学年: {st.session_state.school_type} {st.session_state.grade}")
-    for sub, logs in st.session_state.history.items():
-        with st.expander(f"📙 {sub}"):
-            for i, log in enumerate(logs):
-                c1, c2, c3 = st.columns([2, 1, 1])
-                c1.write(f"📅 {log['date']} (P.{log.get('page','?')})")
-                c2.write(f"🏆 {log['score']}")
-                if c3.button("🔄 解き直し", key=f"rev_{sub}_{i}"):
-                    st.session_state.final_json = {"quizzes": log["quizzes"], "used_subject": sub}
-                    st.session_state.review_mode = True
-                    st.session_state.current_tab = "学習" # 学習画面へ自動遷移
-                    st.rerun()
+                    save_history(st.session_state.history)
+                    st.toast("履歴に保存しました！")
