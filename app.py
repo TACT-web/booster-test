@@ -135,7 +135,7 @@ with tab_study:
         else:
             genai.configure(api_key=st.session_state.user_api_key)
             # 指定のモデル名：gemini-3.0-flash
-            model = genai.GenerativeModel('gemini-3.0-flash-preview')
+            model = genai.GenerativeModel('gemini-3-flash-preview')
             
             with st.status("教科書を分析中..."):
                 style_inst = {"定型":"冷静な天才教育者","対話形式":"親しみやすい対話型の先生","ニュース風":"結論から伝えるニュース速報風","自由入力":custom_style}[style_choice]
