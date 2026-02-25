@@ -46,9 +46,15 @@ def speak_js(text, speed=1.0, lang="ja-JP"):
     else:
         st.components.v1.html("<script>window.parent.speechSynthesis.cancel();</script>", height=0)
 
-# --- 教科別プロンプト (仕様を完全維持) ---
+# --- 教科別プロンプト (英語のみアップデート、他は完全維持) ---
 SUBJECT_PROMPTS = {
-    "英語": "英文を意味の塊（/）で区切るスラッシュリーディング形式（英文 / 訳）を徹底してください。重要な文法構造や熟語についても触れてください。",
+    "英語": """英文を意味の塊（/）で区切るスラッシュリーディング形式（英文 / 訳）を徹底してください。
+以下の色分けルールを適用し、st.markdownで色付け可能な形式（:color[ / ]）で出力してください。
+- 🟢 :green[ / ] ： 主語・動詞の区切り
+- 🔵 :blue[ / ] ： 目的語の間（SVOO）
+- 🔴 :red[ / ] ： 目的語と補語の間（SVOC）
+- 🟡 :orange[ / ] ： 修飾語・前置詞の前
+また、冒頭に『凡例』と『重要語句リスト』、最後に『文法の要点まとめ』と『全文意訳』を含めてください。""",
     "数学": "公式の根拠を重視し、計算過程を一行ずつ省略せず論理的に解説してください。単なる手順ではなく『なぜこの解法を選ぶのか』という思考の起点を言語化してください。",
     "国語": "論理構造（序破急など）を分解し、筆者の主張を明確にしてください。なぜその結論に至ったか、本文の接続詞などを根拠に論理的に説明してください。",
     "理科": "現象のメカニズムを原理・法則から説明してください。図表がある場合は、軸の意味や数値の変化が示す本質を読み解き、日常の具体例を添えてください。",
@@ -56,7 +62,7 @@ SUBJECT_PROMPTS = {
     "その他": "画像内容を客観的に観察し、中立的かつ平易な言葉で要点を3つのポイントに整理して解説してください。"
 }
 
-# --- 1. 同意画面 (元の文章を完全に復元) ---
+# --- 1. 同意画面 (ソースコードを一言一句維持) ---
 if not st.session_state.agreed:
     st.title("🚀 教科書ブースター V1.3")
     with st.container(border=True):
@@ -134,12 +140,11 @@ with tab_study:
             st.error("APIキーを入力してください")
         else:
             genai.configure(api_key=st.session_state.user_api_key)
-            # 指定のモデル名：gemini-3-flash-preview
             model = genai.GenerativeModel('gemini-3-flash-preview')
             
             with st.status("教科書を分析中..."):
                 style_inst = {"定型":"冷静な天才教育者","対話形式":"親しみやすい対話型の先生","ニュース風":"結論から伝えるニュース速報風","自由入力":custom_style}[style_choice]
-                eng_opt = "英語なら冒頭に重要単語表を作成し、解説文はHTMLタグで主語を青色(<span style='color:blue'>)、前置詞を緑色(<span style='color:green'>)で色分けし、その色の意味（青は主語、緑は前置詞句など）を示す凡例を解説の冒頭に必ず記載せよ。" if subject_choice == "英語" else ""
+                eng_opt = "英語なら冒頭に重要単語表を作成し、解説文はHTMLタグやMarkdownのカラー構文で視覚的にわかりやすく整理せよ。" if subject_choice == "英語" else ""
                 
                 full_prompt = f"""あなたは{st.session_state.school_type}{st.session_state.grade}担当。
                 【教科ミッション: {subject_choice}】{SUBJECT_PROMPTS[subject_choice]}
@@ -158,7 +163,6 @@ with tab_study:
 
     if st.session_state.final_json:
         res = st.session_state.final_json
-        # 音声ボタン4種 (全文、英文、停止、個別)
         v_cols = st.columns([1, 1, 1, 1])
         with v_cols[0]:
             if st.button("🔊 全文再生"): speak_js(res.get("audio_script"), st.session_state.voice_speed, "ja-JP")
