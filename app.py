@@ -134,7 +134,7 @@ with tab_study:
             st.error("APIキーを入力してください")
         else:
             genai.configure(api_key=st.session_state.user_api_key)
-            # 指定のモデル名：gemini-3.0-flash
+            # 指定のモデル名：gemini-3-flash-preview
             model = genai.GenerativeModel('gemini-3-flash-preview')
             
             with st.status("教科書を分析中..."):
