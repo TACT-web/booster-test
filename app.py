@@ -240,7 +240,7 @@ if st.session_state.final_json:
     for i, block in enumerate(res.get("explanation_blocks", [])):
         with st.container(border=True):
             st.markdown(f'<div class="content-body">{block["text"]}</div>', unsafe_allow_html=True)
-            if st.session_state.show_voice_btns: [cite: 21]
+            if st.session_state.show_voice_btns:
                 if st.button(f"▶ 再生", key=f"v_{i}"):
                     lang = "en-US" if res.get("used_subject") == "英語" else "ja-JP"
                     clean_voice = get_clean_speech_text(block["text"])
