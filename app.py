@@ -49,9 +49,9 @@ def speak_js(text, speed=1.0, lang="ja-JP"):
 # --- 音声クレンジング関数 (修正版) ---
 def get_clean_speech_text(text):
     if not text: return ""
-    # [cite_start]1. HTMLタグ（<br>など）を除去 [cite: 4]
+    # 1. HTMLタグ（<br>など）を除去
     clean_text = re.sub(r'<[^>]+>', '', text)
-    # [cite_start]2. Markdownの太字（**）を削除 [cite: 4]
+    # 2. Markdownの太字（**）を削除
     clean_text = clean_text.replace('**', '')
     
     # 【修正】■を「しかく」と読むのを防ぐため削除
@@ -60,11 +60,11 @@ def get_clean_speech_text(text):
     # 【修正】「12行目」などを「じゅうにごうめ」ではなく「ぎょうめ」と読ませる
     clean_text = re.sub(r'(\d+)行目', r'\1ぎょうめ', clean_text)
     
-    # [cite_start]3. ルビ(括弧書き)を除去して二重読みを防ぐ [cite: 4]
+    # [cite_start]3. ルビ(括弧書き)を除去して二重読みを防ぐ
     clean_text = re.sub(r'\(.*?\)', '', clean_text)
-    # [cite_start]4. 英語のスラッシュ構文 :color[ / ] を「、」に置換 [cite: 4, 5]
+    # 4. 英語のスラッシュ構文 :color[ / ] を「、」に置換
     clean_text = re.sub(r':[a-z]+\[\s*/\s*\]', '、', clean_text)
-    # [cite_start]5. ハッシュタグ、スラッシュ、表形式記号を削除して読み上げを綺麗にする [cite: 5]
+    # 5. ハッシュタグ、スラッシュ、表形式記号を削除して読み上げを綺麗にする
     clean_text = clean_text.replace('#', '').replace('/', '、').replace('|', '').replace('-', '')
     return clean_text.strip()
 
@@ -116,7 +116,7 @@ if not st.session_state.agreed:
         利用者は、本アプリで取り扱う教科書等の著作物が著作権法により保護されていることを認識し、解析結果等を権利者の許可なく第三者に公開（SNS、ブログ等への掲載）してはならないものとします。
         
         **第2条（AI生成物の正確性と免責）**
-        [cite_start]本アプリが提供する解説および回答は、人工知能による推論に基づくものであり、その正確性、完全性、妥当性を保証するものではありません。生成された内容に起因する学習上の不利益や損害について、開発者は一切の責任を負いません。 [cite: 10]
+        本アプリが提供する解説および回答は、人工知能による推論に基づくものであり、その正確性、完全性、妥当性を保証するものではありません。生成された内容に起因する学習上の不利益や損害について、開発者は一切の責任を負いません。
         
         **第3条（利用目的）**
         本アプリは利用者の私的な学習補助を目的として提供されるものです。試験等の最終的な確認は、必ず公式な教材および指導者の指示に従ってください。
@@ -137,7 +137,7 @@ if not st.session_state.setup_completed:
         st.session_state.age_val = c2.slider("解説ターゲット年齢", 7, 20, 15)
         st.session_state.quiz_count = c2.selectbox("問題数", [10, 15, 20, 25])
         if st.form_submit_button("🚀 学習を開始する"):
-            st.session_state.history = load_history() [cite: 12]
+            st.session_state.history = load_history()
             st.session_state.setup_completed = True
             st.rerun()
     st.stop()
