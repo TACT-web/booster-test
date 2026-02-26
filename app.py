@@ -229,7 +229,7 @@ if st.session_state.final_json:
             speak_js(get_clean_speech_text(full_text), st.session_state.voice_speed, "ja-JP")
     with v_cols[1]:
         if res.get("used_subject") == "英語" and st.button("🔊 英文のみ再生"):
-            [cite_start]speak_js(res.get("english_only_script"), st.session_state.voice_speed, "en-US") [cite: 20]
+            speak_js(res.get("english_only_script"), st.session_state.voice_speed, "en-US")
     with v_cols[2]:
         if st.button("🛑 停止"): speak_js("")
     with v_cols[3]:
@@ -240,7 +240,7 @@ if st.session_state.final_json:
     for i, block in enumerate(res.get("explanation_blocks", [])):
         with st.container(border=True):
             st.markdown(f'<div class="content-body">{block["text"]}</div>', unsafe_allow_html=True)
-            [cite_start]if st.session_state.show_voice_btns: [cite: 21]
+            if st.session_state.show_voice_btns: [cite: 21]
                 if st.button(f"▶ 再生", key=f"v_{i}"):
                     lang = "en-US" if res.get("used_subject") == "英語" else "ja-JP"
                     clean_voice = get_clean_speech_text(block["text"])
