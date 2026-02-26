@@ -46,6 +46,21 @@ def speak_js(text, speed=1.0, lang="ja-JP"):
     else:
         st.components.v1.html("<script>window.parent.speechSynthesis.cancel();</script>", height=0)
 
+# --- 音声クレンジング関数 (追加) ---
+def get_clean_speech_text(text):
+    if not text: return ""
+    # 1. HTMLタグ（<br>など）を除去
+    clean_text = re.sub(r'<[^>]+>', '', text)
+    # 2. Markdownの太字（**）を削除 [cite: 8]
+    clean_text = clean_text.replace('**', '')
+    # 3. ルビ(括弧書き)を除去して二重読みを防ぐ
+    clean_text = re.sub(r'\(.*?\)', '', clean_text)
+    # 4. 英語のスラッシュ構文 :color[ / ] を「、」に置換してポーズを作る 
+    clean_text = re.sub(r':[a-z]+\[\s*/\s*\]', '、', clean_text)
+    # 5. 単体のスラッシュも「、」に置換
+    clean_text = clean_text.replace('/', '、')
+    return clean_text.strip()
+
 # --- 教科別プロンプト (英語のみアップデート、他は完全維持) ---
 SUBJECT_PROMPTS = {
     "英語": """解説は必ず以下の【出力テンプレート】に従い、視認性を最優先して作成してください。
@@ -164,13 +179,25 @@ with tab_study:
                 style_inst = {"定型":"冷静な天才教育者","対話形式":"親しみやすい対話型の先生","ニュース風":"結論から伝えるニュース速報風","自由入力":custom_style}[style_choice]
                 eng_opt = "英語なら冒頭に重要単語表を作成し、解説文はHTMLタグやMarkdownのカラー構文で視覚的にわかりやすく整理せよ。" if subject_choice == "英語" else ""
                 
-                full_prompt = f"""あなたは{st.session_state.school_type}{st.session_state.grade}担当。
-                【教科ミッション: {subject_choice}】{SUBJECT_PROMPTS[subject_choice]}
-                【ルール】1.is_match 2.根拠[P.〇/〇行目] 3.audio_script(ひらがな) 4.english_only_script(英語のみ) 5.ランク別メッセージ 6.年齢{st.session_state.age_val}歳 
-                7.1ブロック100-200文字(AIが内容に応じ判断) 8.問題数{st.session_state.quiz_count}
-                【スタイル】{style_inst} 【構成】導入サマリー → 詳細解説 → クイズ。{eng_opt}
-                ###JSON形式で出力せよ###
-                {{ "is_match": true, "detected_subject": "{subject_choice}", "page": "数字", "explanation_blocks": [{{ "text": "..", "audio_target": ".." }}], "english_only_script": "..", "audio_script": "..", "boost_comments": {{ "high": {{"text":"..","script":".."}}, "mid": {{"text":"..","script":".."}}, "low": {{"text":"..","script":".."}} }}, "quizzes": [{{ "question":"..", "options":[".."], "answer":0 }}] }}"""
+full_prompt = f"""あなたは{st.session_state.school_type}{st.session_state.grade}担当。
+【教科ミッション: {subject_choice}】{SUBJECT_PROMPTS[subject_choice]}
+【ルール】1.is_match 2.根拠[P.〇/〇行目] 3.english_only_script(英語のみ) 4.年齢{st.session_state.age_val}歳 5.1ブロック100-200文字 6.問題数{st.session_state.quiz_count}
+【スタイル】{style_inst} 【構成】導入サマリー → 詳細解説 → クイズ。{eng_opt}
+
+###JSON形式で出力せよ###
+{{ 
+  "is_match": true, 
+  "detected_subject": "{subject_choice}", 
+  "page": "数字", 
+  "explanation_blocks": [{{ "text": "表示と読み上げに使われる解説文" }}], 
+  "english_only_script": "英文のみのテキスト", 
+  "boost_comments": {{ 
+    "high": {{"text":"正解時の励まし","script":"読み上げ台本"}}, 
+    "mid": {{"text":"まずまずの時の励まし","script":"読み上げ台本"}}, 
+    "low": {{"text":"苦戦時の励まし","script":"読み上げ台本"}} 
+  }}, 
+  "quizzes": [{{ "question":"..", "options":[".."], "answer":0 }}] 
+}}"""
                 
                 img = Image.open(cam_file)
                 res_raw = model.generate_content([full_prompt, img])
@@ -179,28 +206,33 @@ with tab_study:
                     st.session_state.final_json = json.loads(match.group(1))
                     st.session_state.final_json["used_subject"] = subject_choice
 
-    if st.session_state.final_json:
-        res = st.session_state.final_json
-        v_cols = st.columns([1, 1, 1, 1])
-        with v_cols[0]:
-            if st.button("🔊 全文再生"): speak_js(res.get("audio_script"), st.session_state.voice_speed, "ja-JP")
-        with v_cols[1]:
-            if res.get("used_subject") == "英語" and st.button("🔊 英文のみ再生"):
-                speak_js(res.get("english_only_script"), st.session_state.voice_speed, "en-US")
-        with v_cols[2]:
-            if st.button("🛑 停止"): speak_js("")
-        with v_cols[3]:
-            if st.button("🔊 個別再生"):
-                st.session_state.show_voice_btns = not st.session_state.show_voice_btns
-                st.rerun()
+if st.session_state.final_json:
+    res = st.session_state.final_json
+    v_cols = st.columns([1, 1, 1, 1])
+    with v_cols[0]:
+        if st.button("🔊 全文再生"):
+            # すべての解説ブロックの text を結合してクレンジング
+            full_text = " ".join([b["text"] for b in res.get("explanation_blocks", [])])
+            speak_js(get_clean_speech_text(full_text), st.session_state.voice_speed, "ja-JP")
+    with v_cols[1]:
+        if res.get("used_subject") == "英語" and st.button("🔊 英文のみ再生"):
+            speak_js(res.get("english_only_script"), st.session_state.voice_speed, "en-US")
+    with v_cols[2]:
+        if st.button("🛑 停止"): speak_js("")
+    with v_cols[3]:
+        if st.button("🔊 個別再生"):
+            st.session_state.show_voice_btns = not st.session_state.show_voice_btns
+            st.rerun()
 
-        for i, block in enumerate(res.get("explanation_blocks", [])):
-            with st.container(border=True):
-                st.markdown(f'<div class="content-body">{block["text"]}</div>', unsafe_allow_html=True)
-                if st.session_state.show_voice_btns:
-                    if st.button(f"▶ 再生", key=f"v_{i}"):
-                        lang = "en-US" if res.get("used_subject") == "英語" else "ja-JP"
-                        speak_js(block["audio_target"], st.session_state.voice_speed, lang)
+    for i, block in enumerate(res.get("explanation_blocks", [])):
+        with st.container(border=True):
+            st.markdown(f'<div class="content-body">{block["text"]}</div>', unsafe_allow_html=True)
+            if st.session_state.show_voice_btns:
+                if st.button(f"▶ 再生", key=f"v_{i}"):
+                    # インデントを正しく修正
+                    lang = "en-US" if res.get("used_subject") == "英語" else "ja-JP"
+                    clean_voice = get_clean_speech_text(block["text"])
+                    speak_js(clean_voice, st.session_state.voice_speed, lang)
 
         with st.expander("📝 定着確認クイズ", expanded=True):
             score = 0
