@@ -137,7 +137,7 @@ if not st.session_state.setup_completed:
         st.session_state.age_val = c2.slider("解説ターゲット年齢", 7, 20, 15)
         st.session_state.quiz_count = c2.selectbox("問題数", [10, 15, 20, 25])
         if st.form_submit_button("🚀 学習を開始する"):
-            [cite_start]st.session_state.history = load_history() [cite: 12]
+            st.session_state.history = load_history() [cite: 12]
             st.session_state.setup_completed = True
             st.rerun()
     st.stop()
@@ -148,7 +148,7 @@ st.session_state.font_size = st.sidebar.slider("🔍 文字サイズ", 14, 45, s
 st.session_state.voice_speed = st.sidebar.slider("🐌 音声速度", 0.5, 2.0, st.session_state.voice_speed, 0.1)
 st.session_state.user_api_key = st.sidebar.text_input("API Key 更新", value=st.session_state.user_api_key, type="password")
 
-[cite_start]st.markdown(f"<style>.content-body {{ font-size: {st.session_state.font_size}px !important; line-height: 1.6; }}</style>", unsafe_allow_html=True) [cite: 13]
+st.markdown(f"<style>.content-body {{ font-size: {st.session_state.font_size}px !important; line-height: 1.6; }}</style>", unsafe_allow_html=True)
 
 # --- 3. メイン画面 (タブ管理) ---
 tab_study, tab_history, tab_config = st.tabs(["📖 学習", "📈 履歴", "⚙️ 設定変更"])
@@ -160,7 +160,7 @@ with tab_config:
         u_age = st.slider("解説ターゲット年齢", 7, 20, st.session_state.age_val)
         u_q = st.selectbox("問題数", [10, 15, 20, 25], index=[10, 15, 20, 25].index(st.session_state.quiz_count))
         
-        [cite_start]if st.form_submit_button("✅ 設定を更新"): [cite: 14]
+        if st.form_submit_button("✅ 設定を更新"):
             st.session_state.school_type, st.session_state.grade = u_s_type, u_grade
             st.session_state.age_val, st.session_state.quiz_count = u_age, u_q
             st.session_state.history = load_history()
@@ -170,7 +170,7 @@ with tab_history:
     st.write(f"📂 {st.session_state.school_type} {st.session_state.grade} の履歴")
     for sub, logs in st.session_state.history.items():
         with st.expander(f"📙 {sub}"):
-            [cite_start]for log in logs: st.write(f"📅 {log['date']} | 結果: {log['score']}") [cite: 15]
+            for log in logs: st.write(f"📅 {log['date']} | 結果: {log['score']}")
 
 with tab_study:
     c_s1, c_s2 = st.columns(2)
@@ -184,7 +184,7 @@ with tab_study:
         if not st.session_state.user_api_key:
             st.error("APIキーを入力してください")
         else:
-            [cite_start]genai.configure(api_key=st.session_state.user_api_key) [cite: 16]
+            genai.configure(api_key=st.session_state.user_api_key)
             model = genai.GenerativeModel('gemini-3-flash-preview')
             
             with st.status("教科書を分析中..."):
@@ -211,14 +211,14 @@ with tab_study:
     "low": {{"text":"苦戦時の励まし","script":"読み上げ台本"}} 
   }}, 
   "quizzes": [{{ "question":"..", "options":[".."], "answer":0 }}] 
-[cite_start]}}""" [cite: 17]
+}}""" 
                 
-                [cite_start]img = Image.open(cam_file) [cite: 18]
+                img = Image.open(cam_file)
                 res_raw = model.generate_content([full_prompt, img])
                 match = re.search(r"(\{.*\})", res_raw.text, re.DOTALL)
                 if match:
                     st.session_state.final_json = json.loads(match.group(1))
-                [cite_start]st.session_state.final_json["used_subject"] = subject_choice [cite: 19]
+                    st.session_state.final_json["used_subject"] = subject_choice
 
 if st.session_state.final_json:
     res = st.session_state.final_json
@@ -246,18 +246,18 @@ if st.session_state.final_json:
                     clean_voice = get_clean_speech_text(block["text"])
                     speak_js(clean_voice, st.session_state.voice_speed, lang)
 
-    [cite_start]with st.expander("📝 定着確認クイズ", expanded=True): [cite: 22]
+    with st.expander("📝 定着確認クイズ", expanded=True):
         score = 0
         for i, q in enumerate(res.get("quizzes", [])):
             ans = st.radio(f"問{i+1}: {q['question']}", q['options'], key=f"q_{i}", index=None)
             if ans == q['options'][q['answer']]: score += 1
         if st.button("採点 & 保存"):
             rate = (score / len(res["quizzes"])) * 100
-            [cite_start]st.metric("正解率", f"{rate:.0f}%") [cite: 23]
+            st.metric("正解率", f"{rate:.0f}%")
             rank = "high" if rate == 100 else "mid" if rate >= 50 else "low"
             st.info(res["boost_comments"][rank]["text"])
             speak_js(res["boost_comments"][rank]["script"], st.session_state.voice_speed)
             subj = res.get("used_subject", "不明")
             if subj not in st.session_state.history: st.session_state.history[subj] = []
-            [cite_start]st.session_state.history[subj].append({"date": datetime.datetime.now().strftime("%m-%d %H:%M"), "score": f"{rate:.0f}%"}) [cite: 24]
+            st.session_state.history[subj].append({"date": datetime.datetime.now().strftime("%m-%d %H:%M"), "score": f"{rate:.0f}%"})
             save_history(st.session_state.history)
