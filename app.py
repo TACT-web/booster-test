@@ -46,22 +46,22 @@ def speak_js(text, speed=1.0, lang="ja-JP"):
     else:
         st.components.v1.html("<script>window.parent.speechSynthesis.cancel();</script>", height=0)
 
-# --- 音声クレンジング関数 (追加) ---
+# --- 音声クレンジング関数 ---
 def get_clean_speech_text(text):
     if not text: return ""
     # 1. HTMLタグ（<br>など）を除去
     clean_text = re.sub(r'<[^>]+>', '', text)
-    # 2. Markdownの太字（**）を削除 [cite: 8]
+    # 2. Markdownの太字（**）を削除
     clean_text = clean_text.replace('**', '')
     # 3. ルビ(括弧書き)を除去して二重読みを防ぐ
     clean_text = re.sub(r'\(.*?\)', '', clean_text)
-    # 4. 英語のスラッシュ構文 :color[ / ] を「、」に置換してポーズを作る 
+    # 4. 英語のスラッシュ構文 :color[ / ] を「、」に置換
     clean_text = re.sub(r':[a-z]+\[\s*/\s*\]', '、', clean_text)
-    # 5. 単体のスラッシュも「、」に置換
-    clean_text = clean_text.replace('/', '、')
+    # 5. ハッシュタグ、スラッシュ、表形式記号を削除して読み上げを綺麗にする
+    clean_text = clean_text.replace('#', '').replace('/', '、').replace('|', '').replace('-', '')
     return clean_text.strip()
 
-# --- 教科別プロンプト (英語のみアップデート、他は完全維持) ---
+# --- 教科別プロンプト ---
 SUBJECT_PROMPTS = {
     "英語": """解説は必ず以下の【出力テンプレート】に従い、視認性を最優先して作成してください。
 
@@ -95,7 +95,7 @@ SUBJECT_PROMPTS = {
     "その他": "画像内容を客観的に観察し、中立的かつ平易な言葉で要点を3つのポイントに整理して解説してください。"
 }
 
-# --- 1. 同意画面 (ソースコードを一言一句維持) ---
+# --- 1. 同意画面 ---
 if not st.session_state.agreed:
     st.title("🚀 教科書ブースター V1.3")
     with st.container(border=True):
@@ -131,7 +131,7 @@ if not st.session_state.setup_completed:
             st.rerun()
     st.stop()
 
-# --- サイドバー (リアルタイム調整) ---
+# --- サイドバー ---
 st.sidebar.header("🛠️ クイック調整")
 st.session_state.font_size = st.sidebar.slider("🔍 文字サイズ", 14, 45, st.session_state.font_size)
 st.session_state.voice_speed = st.sidebar.slider("🐌 音声速度", 0.5, 2.0, st.session_state.voice_speed, 0.1)
@@ -178,11 +178,11 @@ with tab_study:
             with st.status("教科書を分析中..."):
                 style_inst = {"定型":"冷静な天才教育者","対話形式":"親しみやすい対話型の先生","ニュース風":"結論から伝えるニュース速報風","自由入力":custom_style}[style_choice]
                 eng_opt = "英語なら冒頭に重要単語表を作成し、解説文はHTMLタグやMarkdownのカラー構文で視覚的にわかりやすく整理せよ。" if subject_choice == "英語" else ""
-                
+
                 full_prompt = f"""あなたは{st.session_state.school_type}{st.session_state.grade}担当。
 【教科ミッション: {subject_choice}】{SUBJECT_PROMPTS[subject_choice]}
 【ルール】1.is_match 2.根拠[P.〇/〇行目] 3.english_only_script(英語のみ) 4.年齢{st.session_state.age_val}歳 5.1ブロック100-200文字 6.問題数{st.session_state.quiz_count}
-【スタイル】{style_inst} 【構成】導入サマリー → 詳細解説 → クイズ。{eng_opt}
+【スタイル】{style_inst} 【構成】導入サマリー → 詳細解説。※クイズは専用のJSONフィールドにのみ出力せよ。{eng_opt}
 
 ###JSON形式で出力せよ###
 {{ 
@@ -211,7 +211,6 @@ if st.session_state.final_json:
     v_cols = st.columns([1, 1, 1, 1])
     with v_cols[0]:
         if st.button("🔊 全文再生"):
-            # すべての解説ブロックの text を結合してクレンジング
             full_text = " ".join([b["text"] for b in res.get("explanation_blocks", [])])
             speak_js(get_clean_speech_text(full_text), st.session_state.voice_speed, "ja-JP")
     with v_cols[1]:
@@ -229,23 +228,22 @@ if st.session_state.final_json:
             st.markdown(f'<div class="content-body">{block["text"]}</div>', unsafe_allow_html=True)
             if st.session_state.show_voice_btns:
                 if st.button(f"▶ 再生", key=f"v_{i}"):
-                    # インデントを正しく修正
                     lang = "en-US" if res.get("used_subject") == "英語" else "ja-JP"
                     clean_voice = get_clean_speech_text(block["text"])
                     speak_js(clean_voice, st.session_state.voice_speed, lang)
 
-        with st.expander("📝 定着確認クイズ", expanded=True):
-            score = 0
-            for i, q in enumerate(res.get("quizzes", [])):
-                ans = st.radio(f"問{i+1}: {q['question']}", q['options'], key=f"q_{i}", index=None)
-                if ans == q['options'][q['answer']]: score += 1
-            if st.button("採点 & 保存"):
-                rate = (score / len(res["quizzes"])) * 100
-                st.metric("正解率", f"{rate:.0f}%")
-                rank = "high" if rate == 100 else "mid" if rate >= 50 else "low"
-                st.info(res["boost_comments"][rank]["text"])
-                speak_js(res["boost_comments"][rank]["script"], st.session_state.voice_speed)
-                subj = res.get("used_subject", "不明")
-                if subj not in st.session_state.history: st.session_state.history[subj] = []
-                st.session_state.history[subj].append({"date": datetime.datetime.now().strftime("%m-%d %H:%M"), "score": f"{rate:.0f}%"})
-                save_history(st.session_state.history)
+    with st.expander("📝 定着確認クイズ", expanded=True):
+        score = 0
+        for i, q in enumerate(res.get("quizzes", [])):
+            ans = st.radio(f"問{i+1}: {q['question']}", q['options'], key=f"q_{i}", index=None)
+            if ans == q['options'][q['answer']]: score += 1
+        if st.button("採点 & 保存"):
+            rate = (score / len(res["quizzes"])) * 100
+            st.metric("正解率", f"{rate:.0f}%")
+            rank = "high" if rate == 100 else "mid" if rate >= 50 else "low"
+            st.info(res["boost_comments"][rank]["text"])
+            speak_js(res["boost_comments"][rank]["script"], st.session_state.voice_speed)
+            subj = res.get("used_subject", "不明")
+            if subj not in st.session_state.history: st.session_state.history[subj] = []
+            st.session_state.history[subj].append({"date": datetime.datetime.now().strftime("%m-%d %H:%M"), "score": f"{rate:.0f}%"})
+            save_history(st.session_state.history)
