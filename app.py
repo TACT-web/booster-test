@@ -17,9 +17,19 @@ if "voice_speed" not in st.session_state: st.session_state.voice_speed = 1.0
 if "show_voice_btns" not in st.session_state: st.session_state.show_voice_btns = False
 
 # --- 履歴管理 ---
+SAVE_FILE = "study_history.json"
+
+def load_history():
+    if os.path.exists(SAVE_FILE):
+        try:
+            with open(SAVE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
 def save_history(history):
-    filename = f"history_{st.session_state.school_type}_{st.session_state.grade}.json"
-    with open(filename, "w", encoding="utf-8") as f:
+    with open(SAVE_FILE, "w", encoding="utf-8") as f:
         json.dump(history, f, ensure_ascii=False, indent=2)
 
 def load_history():
@@ -167,10 +177,24 @@ with tab_config:
             st.toast("設定を保存しました")
 
 with tab_history:
-    st.write(f"📂 {st.session_state.school_type} {st.session_state.grade} の履歴")
+    st.write(f"📂 学習履歴一覧")
     for sub, logs in st.session_state.history.items():
-        with st.expander(f"📙 {sub}"):
-            for log in logs: st.write(f"📅 {log['date']} | 結果: {log['score']}")
+        with st.expander(f"📙 {sub} ({len(logs)}件)"):
+            for idx, log in enumerate(reversed(logs)):
+                c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
+                c1.write(f"📅 {log['date']}")
+                c2.write(f"📄 P.{log.get('page', '??')}")
+                c3.write(f"🎯 {log['score']}")
+                
+                # クイズの再表示機能
+                if c4.button("問題を見る", key=f"hist_btn_{sub}_{idx}"):
+                    st.info(f"--- 過去の問題: {log['date']} ---")
+                    for q_idx, q in enumerate(log.get("quizzes", [])):
+                        st.markdown(f"**問{q_idx+1}: {q['question']}**")
+                        for o_idx, opt in enumerate(q['options']):
+                            mark = "✅" if o_idx == q['answer'] else ""
+                            st.write(f"{o_idx}: {opt} {mark}")
+                    st.divider()
 
 with tab_study:
     c_s1, c_s2 = st.columns(2)
@@ -251,13 +275,18 @@ if st.session_state.final_json:
         for i, q in enumerate(res.get("quizzes", [])):
             ans = st.radio(f"問{i+1}: {q['question']}", q['options'], key=f"q_{i}", index=None)
             if ans == q['options'][q['answer']]: score += 1
-        if st.button("採点 & 保存"):
+if st.button("採点 & 保存"):
             rate = (score / len(res["quizzes"])) * 100
             st.metric("正解率", f"{rate:.0f}%")
-            rank = "high" if rate == 100 else "mid" if rate >= 50 else "low"
-            st.info(res["boost_comments"][rank]["text"])
-            speak_js(res["boost_comments"][rank]["script"], st.session_state.voice_speed)
+            # (中略)
             subj = res.get("used_subject", "不明")
             if subj not in st.session_state.history: st.session_state.history[subj] = []
-            st.session_state.history[subj].append({"date": datetime.datetime.now().strftime("%m-%d %H:%M"), "score": f"{rate:.0f}%"})
+            
+            # ページ、日付、得点率、クイズデータを保存
+            st.session_state.history[subj].append({
+                "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "page": res.get("page", "不明"),
+                "score": f"{rate:.0f}%",
+                "quizzes": res.get("quizzes", [])
+            })
             save_history(st.session_state.history)
