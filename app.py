@@ -130,7 +130,7 @@ if not st.session_state.agreed:
 if not st.session_state.setup_completed:
     st.subheader("⚙️ 初期セットアップ")
     with st.form("setup_form"):
-        [cite_start]st.session_state.user_api_key = st.text_input("Gemini API Key", type="password") [cite: 11]
+        st.session_state.user_api_key = st.text_input("Gemini API Key", type="password")
         c1, c2 = st.columns(2)
         st.session_state.school_type = c1.selectbox("学校区分", ["小学生", "中学生", "高校生"])
         st.session_state.grade = c1.selectbox("学年", [f"{i}年生" for i in range(1, 7)])
