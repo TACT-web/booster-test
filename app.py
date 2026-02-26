@@ -179,7 +179,7 @@ with tab_study:
                 style_inst = {"定型":"冷静な天才教育者","対話形式":"親しみやすい対話型の先生","ニュース風":"結論から伝えるニュース速報風","自由入力":custom_style}[style_choice]
                 eng_opt = "英語なら冒頭に重要単語表を作成し、解説文はHTMLタグやMarkdownのカラー構文で視覚的にわかりやすく整理せよ。" if subject_choice == "英語" else ""
                 
-full_prompt = f"""あなたは{st.session_state.school_type}{st.session_state.grade}担当。
+                full_prompt = f"""あなたは{st.session_state.school_type}{st.session_state.grade}担当。
 【教科ミッション: {subject_choice}】{SUBJECT_PROMPTS[subject_choice]}
 【ルール】1.is_match 2.根拠[P.〇/〇行目] 3.english_only_script(英語のみ) 4.年齢{st.session_state.age_val}歳 5.1ブロック100-200文字 6.問題数{st.session_state.quiz_count}
 【スタイル】{style_inst} 【構成】導入サマリー → 詳細解説 → クイズ。{eng_opt}
