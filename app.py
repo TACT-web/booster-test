@@ -310,8 +310,6 @@ if st.session_state.final_json:
                     if evidence:
                         st.caption(f"💡 {evidence}")
             else:
-                all_answered = False
-            else:
                 all_answered = False  # まだ未回答がある
 
         # すべて回答したら保存ボタンを表示
