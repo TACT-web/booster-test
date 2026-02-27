@@ -178,23 +178,35 @@ with tab_config:
 
 with tab_history:
     st.write(f"📂 学習履歴一覧")
+    # 保存されている教科ごとに履歴を表示
     for sub, logs in st.session_state.history.items():
         with st.expander(f"📙 {sub} ({len(logs)}件)"):
             for idx, log in enumerate(reversed(logs)):
+                # 1行のサマリー表示（日付、ページ、得点率、ボタン）
                 c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
                 c1.write(f"📅 {log['date']}")
                 c2.write(f"📄 P.{log.get('page', '??')}")
                 c3.write(f"🎯 {log['score']}")
                 
-                # クイズの再表示機能
-                if c4.button("問題を見る", key=f"hist_btn_{sub}_{idx}"):
-                    st.info(f"--- 過去の問題: {log['date']} ---")
-                    for q_idx, q in enumerate(log.get("quizzes", [])):
-                        st.markdown(f"**問{q_idx+1}: {q['question']}**")
-                        for o_idx, opt in enumerate(q['options']):
-                            mark = "✅" if o_idx == q['answer'] else ""
-                            st.write(f"{o_idx}: {opt} {mark}")
-                    st.divider()
+                # 「解き直す」ボタンの処理
+                if c4.button("解き直す", key=f"hist_btn_{sub}_{idx}"):
+                    # 履歴のデータを現在のメイン画面用セッションに復元
+                    st.session_state.final_json = {
+                        "explanation_blocks": [{"text": f"### 🕒 復習モード\n**{log['date']} (P.{log.get('page','--')}) の解き直し**"}],
+                        "quizzes": log["quizzes"],
+                        "used_subject": sub,
+                        "page": log.get("page", "不明"),
+                        "boost_comments": {
+                            "high": {"text": "完璧です！", "script": "完璧です"},
+                            "mid": {"text": "その調子！", "script": "その調子"},
+                            "low": {"text": "次はもっといけるよ！", "script": "次はもっといけるよ"}
+                        }
+                    }
+                    # 以前の回答（ラジオボタンの状態）をクリア
+                    for k in list(st.session_state.keys()):
+                        if k.startswith("q_"):
+                            del st.session_state[k]
+                    st.rerun()
 
 with tab_study:
     c_s1, c_s2 = st.columns(2)
@@ -270,23 +282,60 @@ if st.session_state.final_json:
                     clean_voice = get_clean_speech_text(block["text"])
                     speak_js(clean_voice, st.session_state.voice_speed, lang)
 
-    with st.expander("📝 定着確認クイズ", expanded=True):
+        with st.expander("📝 定着確認クイズ", expanded=True):
         score = 0
+        all_answered = True
+        
+            # 選択肢の表示
         for i, q in enumerate(res.get("quizzes", [])):
             ans = st.radio(f"問{i+1}: {q['question']}", q['options'], key=f"q_{i}", index=None)
-            if ans == q['options'][q['answer']]: score += 1
-if st.button("採点 & 保存"):
-            rate = (score / len(res["quizzes"])) * 100
-            st.metric("正解率", f"{rate:.0f}%")
-            # (中略)
-            subj = res.get("used_subject", "不明")
-            if subj not in st.session_state.history: st.session_state.history[subj] = []
             
-            # ページ、日付、得点率、クイズデータを保存
-            st.session_state.history[subj].append({
-                "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
-                "page": res.get("page", "不明"),
-                "score": f"{rate:.0f}%",
-                "quizzes": res.get("quizzes", [])
-            })
-            save_history(st.session_state.history)
+            if ans is not None:
+                selected_idx = q['options'].index(ans)
+                if selected_idx == q['answer']:
+                    st.success(f"⭕ 正解！")
+                    score += 1
+                else:
+                    # 不正解の場合：正解の選択肢と、解説文から抽出した根拠（ページ/行）を表示
+                    # プロンプトの性質上、explanation_blocksのテキスト内に [P.xx/xx行目] が含まれています
+                    evidence = ""
+                    for block in res.get("explanation_blocks", []):
+                        # 正規表現で [P.xx/xx行目] の形式を抽出
+                        match = re.search(r"\[P\..+?\]", block["text"])
+                        if match:
+                            evidence = f"（根拠：{match.group()} 付近を確認しよう）"
+                            break
+                    
+                    st.error(f"❌ 残念！ 正解は: **{q['options'][q['answer']]}**")
+                    if evidence:
+                        st.caption(f"💡 {evidence}")
+            else:
+                all_answered = False
+            else:
+                all_answered = False  # まだ未回答がある
+
+        # すべて回答したら保存ボタンを表示
+        if all_answered:
+            st.divider()
+            if st.button("✨ この結果を履歴に保存する", use_container_width=True):
+                rate = (score / len(res["quizzes"])) * 100
+                st.metric("今回の正解率", f"{rate:.0f}%")
+                
+                # ランク判定とフィードバック
+                rank = "high" if rate == 100 else "mid" if rate >= 50 else "low"
+                st.info(res["boost_comments"][rank]["text"])
+                speak_js(res["boost_comments"][rank]["script"], st.session_state.voice_speed)
+                
+                # 履歴保存
+                subj = res.get("used_subject", "不明")
+                if subj not in st.session_state.history: st.session_state.history[subj] = []
+                st.session_state.history[subj].append({
+                    "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "page": res.get("page", "不明"),
+                    "score": f"{rate:.0f}%",
+                    "quizzes": res.get("quizzes", []) # 構成をそのまま保存
+                })
+                save_history(st.session_state.history)
+                st.toast("履歴に保存しました！")
+        else:
+            st.info("すべての問題に回答すると、最後に結果を保存できます ✍️")
