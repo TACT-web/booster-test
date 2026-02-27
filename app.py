@@ -283,8 +283,8 @@ if st.session_state.final_json:
                     speak_js(clean_voice, st.session_state.voice_speed, lang)
 
         with st.expander("📝 定着確認クイズ", expanded=True):
-        score = 0
-        all_answered = True
+        　　score = 0
+        　　all_answered = True
         
             # 選択肢の表示
         for i, q in enumerate(res.get("quizzes", [])):
