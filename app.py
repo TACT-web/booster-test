@@ -16,29 +16,27 @@ if "user_api_key" not in st.session_state: st.session_state.user_api_key = ""
 if "voice_speed" not in st.session_state: st.session_state.voice_speed = 1.0
 if "show_voice_btns" not in st.session_state: st.session_state.show_voice_btns = False
 
-# --- 履歴管理 ---
-SAVE_FILE = "study_history.json"
+# --- 履歴管理 (パターンB: 学年別ファイルに統一) ---
+def get_history_filename():
+    # セットアップ完了前でもエラーにならないようデフォルト値を設定
+    s_type = st.session_state.get("school_type", "未設定")
+    grade = st.session_state.get("grade", "未設定")
+    return f"history_{s_type}_{grade}.json"
 
 def load_history():
-    if os.path.exists(SAVE_FILE):
+    filename = get_history_filename()
+    if os.path.exists(filename):
         try:
-            with open(SAVE_FILE, "r", encoding="utf-8") as f:
+            with open(filename, "r", encoding="utf-8") as f:
                 return json.load(f)
         except:
             return {}
     return {}
 
 def save_history(history):
-    with open(SAVE_FILE, "w", encoding="utf-8") as f:
+    filename = get_history_filename()
+    with open(filename, "w", encoding="utf-8") as f:
         json.dump(history, f, ensure_ascii=False, indent=2)
-
-def load_history():
-    filename = f"history_{st.session_state.school_type}_{st.session_state.grade}.json"
-    if os.path.exists(filename):
-        try:
-            with open(filename, "r", encoding="utf-8") as f: return json.load(f)
-        except: return {}
-    return {}
 
 # --- 音声再生エンジン (JavaScript) ---
 def speak_js(text, speed=1.0, lang="ja-JP"):
@@ -59,26 +57,16 @@ def speak_js(text, speed=1.0, lang="ja-JP"):
 # --- 音声クレンジング関数 (修正版) ---
 def get_clean_speech_text(text):
     if not text: return ""
-    # 1. HTMLタグ（<br>など）を除去
     clean_text = re.sub(r'<[^>]+>', '', text)
-    # 2. Markdownの太字（**）を削除
     clean_text = clean_text.replace('**', '')
-    
-    # 【修正】■を「しかく」と読むのを防ぐため削除
     clean_text = clean_text.replace('■', '').replace('●', '').replace('・', ' ')
-    
-    # 【修正】「12行目」などを「じゅうにごうめ」ではなく「ぎょうめ」と読ませる
     clean_text = re.sub(r'(\d+)行目', r'\1ぎょうめ', clean_text)
-    
-    # [cite_start]3. ルビ(括弧書き)を除去して二重読みを防ぐ
-    clean_text = re.sub(r'\(.*?\)', '', clean_text)
-    # 4. 英語のスラッシュ構文 :color[ / ] を「、」に置換
+    clean_text = re.sub(r'\(.*?\)', '', clean_text) 
     clean_text = re.sub(r':[a-z]+\[\s*/\s*\]', '、', clean_text)
-    # 5. ハッシュタグ、スラッシュ、表形式記号を削除して読み上げを綺麗にする
     clean_text = clean_text.replace('#', '').replace('/', '、').replace('|', '').replace('-', '')
     return clean_text.strip()
 
-# --- 教科別プロンプト (修正版) ---
+# --- 教科別プロンプト ---
 SUBJECT_PROMPTS = {
     "英語": """解説は必ず以下の【出力テンプレート】に従い、視認性を最優先して作成してください。
 
@@ -99,20 +87,15 @@ SUBJECT_PROMPTS = {
 | 英文（構造可視化） | 意味の塊 | 理由・文法 |
 | :--- | :--- | :--- |
 | （例：I **:green[ / ]** am...） | （例：私は / ...） | （解説） |
-
 【絶対ルール】
 1. スラッシュは必ず太字記号で囲み **:color[ / ]** の形式にして、色を強調すること。
 2. 凡例は各行の末尾に <br> を入れて、物理的に強制改行させること。
 3. 全ての解説は必ず `|` 記号を使った「マークダウン表形式」を崩さずに出力すること。""",
 
     "数学": "公式の根拠を重視し、計算過程を一行ずつ省略せず論理的に解説してください。単なる手順ではなく『なぜこの解法を選ぶのか』という思考の起点を言語化してください。",
-    
     "国語": "論理構造（序破急など）を分解し、筆者の主張を明確にしてください。なぜその結論に至ったか、本文の接続詞などを根拠に論理的に説明してください。",
-    
     "理科": "【重要ルール：重要語句を最初に表記し、その後に解説を行うこと】現象のメカニズムを原理・法則から説明してください。図表がある場合は、軸の意味や数値の変化が示す本質を読み解き、日常の具体例を添えてください。",
-    
     "社会": "【重要ルール：重要語句を最初に表記し、その後に解説を行うこと】歴史的背景と現代の繋がりをストーリー化してください。単なる事実の羅列ではなく『なぜこの出来事が起きたのか』という因果関係を重視して解説してください。",
-    
     "その他": "画像内容を客観的に観察し、中立性かつ平易な言葉で要点を3つのポイントに整理して解説してください。"
 }
 
@@ -126,10 +109,10 @@ if not st.session_state.agreed:
         利用者は、本アプリで取り扱う教科書等の著作物が著作権法により保護されていることを認識し、解析結果等を権利者の許可なく第三者に公開（SNS、ブログ等への掲載）してはならないものとします。
         
         **第2条（AI生成物の正確性と免責）**
-        本アプリが提供する解説および回答は、人工知能による推論に基づくものであり、その正確性、完全性、妥当性を保証するものではありません。生成された内容に起因する学習上の不利益や損害について、開発者は一切の責任を負いません。
+        本アプリが提供する解説および回答は、人工知能による推論に基づくものであり、その正確性、完全性、妥当性を保証するものではありません。
         
         **第3条（利用目的）**
-        本アプリは利用者の私的な学習補助を目的として提供されるものです。試験等の最終的な確認は、必ず公式な教材および指導者の指示に従ってください。
+        本アプリは利用者の私的な学習補助を目的として提供されるものです。
         """)
         if st.checkbox("上記の内容を理解し、すべての条項に同意します。"):
             st.session_state.agreed = True
@@ -146,6 +129,7 @@ if not st.session_state.setup_completed:
         st.session_state.grade = c1.selectbox("学年", [f"{i}年生" for i in range(1, 7)])
         st.session_state.age_val = c2.slider("解説ターゲット年齢", 7, 20, 15)
         st.session_state.quiz_count = c2.selectbox("問題数", [10, 15, 20, 25])
+        
         if st.form_submit_button("🚀 学習を開始する"):
             st.session_state.history = load_history()
             st.session_state.setup_completed = True
@@ -177,20 +161,16 @@ with tab_config:
             st.toast("設定を保存しました")
 
 with tab_history:
-    st.write(f"📂 学習履歴一覧")
-    # 保存されている教科ごとに履歴を表示
+    st.write(f"📂 学習履歴一覧 ({st.session_state.school_type} {st.session_state.grade})")
     for sub, logs in st.session_state.history.items():
         with st.expander(f"📙 {sub} ({len(logs)}件)"):
             for idx, log in enumerate(reversed(logs)):
-                # 1行のサマリー表示（日付、ページ、得点率、ボタン）
                 c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
                 c1.write(f"📅 {log['date']}")
                 c2.write(f"📄 P.{log.get('page', '??')}")
                 c3.write(f"🎯 {log['score']}")
                 
-                # 「解き直す」ボタンの処理
                 if c4.button("解き直す", key=f"hist_btn_{sub}_{idx}"):
-                    # 履歴のデータを現在のメイン画面用セッションに復元
                     st.session_state.final_json = {
                         "explanation_blocks": [{"text": f"### 🕒 復習モード\n**{log['date']} (P.{log.get('page','--')}) の解き直し**"}],
                         "quizzes": log["quizzes"],
@@ -202,7 +182,6 @@ with tab_history:
                             "low": {"text": "次はもっといけるよ！", "script": "次はもっといけるよ"}
                         }
                     }
-                    # 以前の回答（ラジオボタンの状態）をクリア
                     for k in list(st.session_state.keys()):
                         if k.startswith("q_"):
                             del st.session_state[k]
@@ -227,7 +206,6 @@ with tab_study:
                 style_inst = {"定型":"冷静な天才教育者","対話形式":"親しみやすい対話型の先生","ニュース風":"結論から伝えるニュース速報風","自由入力":custom_style}[style_choice]
                 eng_opt = "英語なら冒頭に重要単語表を作成し、解説文はHTMLタグやMarkdownのカラー構文で視覚的にわかりやすく整理せよ。" if subject_choice == "英語" else ""
 
-                # 【修正】クイズの出題範囲を解説内容に限定する強力な指示を追加
                 full_prompt = f"""あなたは{st.session_state.school_type}{st.session_state.grade}担当。
 【教科ミッション: {subject_choice}】{SUBJECT_PROMPTS[subject_choice]}
 【ルール】1.is_match 2.根拠[P.〇/〇行目] 3.english_only_script(英語のみ) 4.年齢{st.session_state.age_val}歳 5.1ブロック100-200文字 6.問題数{st.session_state.quiz_count}
@@ -247,7 +225,7 @@ with tab_study:
     "low": {{"text":"苦戦時の励まし","script":"読み上げ台本"}} 
   }}, 
   "quizzes": [{{ "question":"..", "options":[".."], "answer":0 }}] 
-}}""" 
+}}"""
                 
                 img = Image.open(cam_file)
                 res_raw = model.generate_content([full_prompt, img])
@@ -278,15 +256,14 @@ if st.session_state.final_json:
             st.markdown(f'<div class="content-body">{block["text"]}</div>', unsafe_allow_html=True)
             if st.session_state.show_voice_btns:
                 if st.button(f"▶ 再生", key=f"v_{i}"):
-                    lang = "en-US" if res.get("used_subject") == "英語" else "ja-JP"
-                    clean_voice = get_clean_speech_text(block["text"])
-                    speak_js(clean_voice, st.session_state.voice_speed, lang)
+                    # 英語教科でも、解説文自体は日本語なので原則ja-JP、英文らしき場合のみen-US
+                    lang = "en-US" if res.get("used_subject") == "英語" and not any(c in block["text"] for c in "あいうえおかきくけこ") else "ja-JP"
+                    speak_js(get_clean_speech_text(block["text"]), st.session_state.voice_speed, lang)
 
-        with st.expander("📝 定着確認クイズ", expanded=True):
-            score = 0
-            all_answered = True
+    with st.expander("📝 定着確認クイズ", expanded=True):
+        score = 0
+        all_answered = True
         
-            # 選択肢の表示
         for i, q in enumerate(res.get("quizzes", [])):
             ans = st.radio(f"問{i+1}: {q['question']}", q['options'], key=f"q_{i}", index=None)
             
@@ -296,42 +273,34 @@ if st.session_state.final_json:
                     st.success(f"⭕ 正解！")
                     score += 1
                 else:
-                    # 不正解の場合：正解の選択肢と、解説文から抽出した根拠（ページ/行）を表示
-                    # プロンプトの性質上、explanation_blocksのテキスト内に [P.xx/xx行目] が含まれています
                     evidence = ""
                     for block in res.get("explanation_blocks", []):
-                        # 正規表現で [P.xx/xx行目] の形式を抽出
                         match = re.search(r"\[P\..+?\]", block["text"])
                         if match:
                             evidence = f"（根拠：{match.group()} 付近を確認しよう）"
                             break
-                    
                     st.error(f"❌ 残念！ 正解は: **{q['options'][q['answer']]}**")
-                    if evidence:
-                        st.caption(f"💡 {evidence}")
+                    if evidence: st.caption(f"💡 {evidence}")
             else:
-                all_answered = False  # まだ未回答がある
+                all_answered = False
 
-        # すべて回答したら保存ボタンを表示
         if all_answered:
             st.divider()
             if st.button("✨ この結果を履歴に保存する", use_container_width=True):
                 rate = (score / len(res["quizzes"])) * 100
                 st.metric("今回の正解率", f"{rate:.0f}%")
                 
-                # ランク判定とフィードバック
                 rank = "high" if rate == 100 else "mid" if rate >= 50 else "low"
                 st.info(res["boost_comments"][rank]["text"])
                 speak_js(res["boost_comments"][rank]["script"], st.session_state.voice_speed)
                 
-                # 履歴保存
                 subj = res.get("used_subject", "不明")
                 if subj not in st.session_state.history: st.session_state.history[subj] = []
                 st.session_state.history[subj].append({
                     "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
                     "page": res.get("page", "不明"),
                     "score": f"{rate:.0f}%",
-                    "quizzes": res.get("quizzes", []) # 構成をそのまま保存
+                    "quizzes": res.get("quizzes", [])
                 })
                 save_history(st.session_state.history)
                 st.toast("履歴に保存しました！")
